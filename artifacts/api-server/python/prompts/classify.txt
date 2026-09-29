@@ -1,0 +1,4 @@
+Derive a compact taxonomy from the supplied real ticket messages and notes, not from generic assumed categories. Preserve the original category separately; it is not ground truth.
+Return JSON:
+{"taxonomy":[{"name":"observed topic","definition":"meaning grounded in sample"}],"classifications":[{"ticket_id":"supplied ID","category":"exact taxonomy name","rationale":"short grounded explanation","confidence":"low|medium|high","evidence":[{"ticket_id":"same supplied ID","field":"customer_message|agent_notes","excerpt":"exact contiguous source excerpt"}]}]}
+Classify each supplied ticket once. Mark ambiguous/noisy transcripts low confidence, explain limitations. Do not infer agent misconduct or confirm a root cause.

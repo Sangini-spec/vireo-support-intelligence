@@ -1,0 +1,825 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 1.0.0
+  description: Vireo Support Intelligence. CSV-backed deterministic analytics; AI interpretations never replace computed metrics.
+servers:
+  - url: /api
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+  /vireo/meta:
+    get:
+      operationId: getVireoMeta
+      responses:
+        "200":
+          description: Dataset metadata and available filter values
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Metadata" }
+  /vireo/dashboard:
+    get:
+      operationId: getVireoDashboard
+      parameters: &filters
+        - { $ref: "#/components/parameters/Scope" }
+        - { $ref: "#/components/parameters/Week" }
+        - { $ref: "#/components/parameters/StartDate" }
+        - { $ref: "#/components/parameters/EndDate" }
+        - { $ref: "#/components/parameters/Channel" }
+        - { $ref: "#/components/parameters/Shift" }
+        - { $ref: "#/components/parameters/ArrivalShift" }
+        - { $ref: "#/components/parameters/Agent" }
+        - { $ref: "#/components/parameters/Team" }
+        - { $ref: "#/components/parameters/RosterEvent" }
+        - { $ref: "#/components/parameters/Tier" }
+      responses:
+        "200":
+          description: Summary, weekly trend, comparison, all breakdowns and arrival-attribution cross-tab
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dashboard" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /vireo/weeks:
+    get:
+      operationId: getVireoWeeks
+      parameters: *filters
+      responses:
+        "200":
+          description: Available Monday-Sunday IST weeks; ignores week selection but respects other filters
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WeekMetrics" }
+  /vireo/tickets:
+    get:
+      operationId: getVireoTickets
+      parameters:
+        - { $ref: "#/components/parameters/Scope" }
+        - { $ref: "#/components/parameters/Week" }
+        - { $ref: "#/components/parameters/StartDate" }
+        - { $ref: "#/components/parameters/EndDate" }
+        - { $ref: "#/components/parameters/Channel" }
+        - { $ref: "#/components/parameters/Shift" }
+        - { $ref: "#/components/parameters/ArrivalShift" }
+        - { $ref: "#/components/parameters/Agent" }
+        - { $ref: "#/components/parameters/Team" }
+        - { $ref: "#/components/parameters/RosterEvent" }
+        - { $ref: "#/components/parameters/Tier" }
+        - name: search
+          in: query
+          schema: { type: string, maxLength: 200 }
+        - name: breach
+          in: query
+          schema: { type: string, enum: [all, breached, within, unknown], default: all }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        "200":
+          description: Canonical ticket evidence list; source text loaded in detail endpoint
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /vireo/tickets/{ticket_id}:
+    get:
+      operationId: getVireoTicket
+      parameters:
+        - name: ticket_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Real source text, deterministic calculation, relational context and source provenance
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketDetail" }
+        "404":
+          description: Ticket not found or quarantined
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  /vireo/validation:
+    get:
+      operationId: getVireoValidation
+      parameters: *filters
+      responses:
+        "200":
+          description: Dataset-wide quality counts plus filter-specific reconciliation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationReport" }
+  /vireo/duplicates:
+    get:
+      operationId: getVireoDuplicates
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: conflicts_only
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Auditable duplicate groups with source rows; never hard-coded counts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DuplicatePage" }
+  /vireo/insights:
+    get:
+      operationId: getVireoInsights
+      parameters: *filters
+      responses:
+        "200":
+          description: Cached insights for current dataset and filter state; GET never triggers model calls
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InsightsResult" }
+    post:
+      operationId: generateVireoInsights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnalysisInput" }
+      responses:
+        "200":
+          description: Grounded interpretation with real ticket evidence or explicit unavailable status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InsightsResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /vireo/classifications:
+    post:
+      operationId: classifyVireoTickets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClassificationInput" }
+      responses:
+        "200":
+          description: Bounded real-ticket classification; taxonomy derives from observed sample text
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClassificationResult" }
+  /vireo/evaluations:
+    get:
+      operationId: getVireoEvaluation
+      responses:
+        "200":
+          description: Human review results; Not evaluated until actual human reviews are stored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EvaluationResult" }
+    post:
+      operationId: submitVireoEvaluation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EvaluationInput" }
+      responses:
+        "200":
+          description: Stored human review and updated measured results
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EvaluationResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /vireo/ask:
+    post:
+      operationId: askVireo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuestionInput" }
+      responses:
+        "200":
+          description: Tool-grounded answer with sources; never arbitrary SQL or raw-CSV calculations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnswerResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /vireo/brief:
+    post:
+      operationId: generateVireoBrief
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BriefInput" }
+      responses:
+        "200":
+          description: Selected-filter brief; deterministic Markdown export remains available without AI
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BriefResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+components:
+  parameters:
+    Scope:
+      name: scope
+      in: query
+      description: policy excludes creation dates before 2025-04-01 IST; historical includes all with retrospective-policy caveat
+      schema: { type: string, enum: [policy, historical], default: policy }
+    Week:
+      name: week
+      in: query
+      description: Monday ISO date in IST. Intersected with date range and policy scope.
+      schema: { type: string, format: date }
+    StartDate:
+      name: start_date
+      in: query
+      schema: { type: string, format: date }
+    EndDate:
+      name: end_date
+      in: query
+      description: Inclusive IST creation date
+      schema: { type: string, format: date }
+    Channel:
+      name: channel
+      in: query
+      schema: { type: string, enum: [chat, email, voice, social] }
+    Shift:
+      name: shift
+      in: query
+      description: Resolving agent historical roster shift, not arrival shift
+      schema: { type: string, enum: [Morning, Day, Night, Unmapped] }
+    ArrivalShift:
+      name: arrival_shift
+      in: query
+      schema: { type: string, enum: [Morning, Day, Night, Unknown] }
+    Agent:
+      name: agent
+      in: query
+      schema: { type: string }
+    Team:
+      name: team
+      in: query
+      description: Resolving agent roster team; first-assigned team is a separate breakdown
+      schema: { type: string }
+    RosterEvent:
+      name: roster_event
+      in: query
+      description: IST date used to select historical roster. Missing resolution remains Unmapped, never silently falls back.
+      schema: { type: string, enum: [created, first_response, resolved], default: created }
+    Tier:
+      name: tier
+      in: query
+      schema: { type: string, enum: ["1", "2"] }
+  responses:
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string }
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+    Filters:
+      type: object
+      properties:
+        scope: { type: string, enum: [policy, historical], default: policy }
+        week: { type: string, format: date }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        channel: { type: string, enum: [chat, email, voice, social] }
+        shift: { type: string, enum: [Morning, Day, Night, Unmapped] }
+        arrival_shift: { type: string, enum: [Morning, Day, Night, Unknown] }
+        agent: { type: string }
+        team: { type: string }
+        roster_event: { type: string, enum: [created, first_response, resolved], default: created }
+        tier: { type: string, enum: ["1", "2"] }
+    SourceFile:
+      type: object
+      required: [name, rows, sha256]
+      properties:
+        name: { type: string }
+        rows: { type: integer }
+        sha256: { type: string }
+    AgentOption:
+      type: object
+      required: [agent_id, name, tier]
+      properties:
+        agent_id: { type: string }
+        name: { type: string }
+        tier: { type: string }
+    ChannelPolicy:
+      type: object
+      required: [channel, target_minutes]
+      properties:
+        channel: { type: string }
+        target_minutes: { type: number }
+    Metadata:
+      type: object
+      required: [dataset_version, loaded_at, date_start, date_end, policy_effective_date, default_week, raw_rows, canonical_tickets, channels, teams, agents, shifts, policies, source_files, ai_available, ai_model, notices]
+      properties:
+        dataset_version: { type: string }
+        loaded_at: { type: string }
+        date_start: { type: string }
+        date_end: { type: string }
+        policy_effective_date: { type: string }
+        default_week: { type: string, description: Latest complete week, not the final partial week }
+        raw_rows: { type: integer }
+        canonical_tickets: { type: integer }
+        channels: { type: array, items: { type: string } }
+        teams: { type: array, items: { type: string } }
+        agents: { type: array, items: { $ref: "#/components/schemas/AgentOption" } }
+        shifts: { type: array, items: { type: string } }
+        policies: { type: array, items: { $ref: "#/components/schemas/ChannelPolicy" } }
+        source_files: { type: array, items: { $ref: "#/components/schemas/SourceFile" } }
+        ai_available: { type: boolean }
+        ai_model: { type: string }
+        notices: { type: array, items: { type: string } }
+    MetricSet:
+      type: object
+      required: [tickets, evaluated, breaches, non_breaches, unknown, breach_rate, average_response_minutes, median_response_minutes, exposure_inr, completed_exposure_inr, pending_exposure_inr]
+      properties:
+        tickets: { type: integer }
+        evaluated: { type: integer }
+        breaches: { type: integer }
+        non_breaches: { type: integer }
+        unknown: { type: integer }
+        breach_rate: { type: [number, "null"], description: Percent 0-100; denominator evaluated, null for no eligible tickets }
+        average_response_minutes: { type: [number, "null"] }
+        median_response_minutes: { type: [number, "null"] }
+        exposure_inr: { type: number }
+        completed_exposure_inr: { type: number }
+        pending_exposure_inr: { type: number }
+    Period:
+      type: object
+      required: [start, end, label, partial, days, convention]
+      properties:
+        start: { type: string }
+        end: { type: string }
+        label: { type: string }
+        partial: { type: boolean }
+        days: { type: integer }
+        convention: { type: string }
+    WeekMetrics:
+      type: object
+      required: [week, end, label, partial, days, metrics]
+      properties:
+        week: { type: string }
+        end: { type: string }
+        label: { type: string }
+        partial: { type: boolean }
+        days: { type: integer }
+        metrics: { $ref: "#/components/schemas/MetricSet" }
+    BreakdownRow:
+      type: object
+      required: [key, label, metrics, breach_contribution, volume_share, previous_metrics, rate_change_pp, low_volume]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        metrics: { $ref: "#/components/schemas/MetricSet" }
+        breach_contribution: { type: [number, "null"], description: Percent of selected scope breaches }
+        volume_share: { type: [number, "null"], description: Percent of selected scope tickets }
+        previous_metrics: { $ref: "#/components/schemas/MetricSet" }
+        rate_change_pp: { type: [number, "null"] }
+        low_volume: { type: boolean, description: Analyst flag fewer than 30 evaluated tickets; not statistical confidence }
+        target_minutes: { type: [number, "null"] }
+        agent_id: { type: string }
+        tier: { type: string }
+        team: { type: string }
+        shift: { type: string }
+    CrossTabCell:
+      type: object
+      required: [arrival_shift, resolving_shift, tickets, breaches, breach_rate]
+      properties:
+        arrival_shift: { type: string }
+        resolving_shift: { type: string }
+        tickets: { type: integer }
+        breaches: { type: integer }
+        breach_rate: { type: [number, "null"] }
+    Change:
+      type: object
+      required: [dimension, key, label, current_tickets, previous_tickets, current_breaches, previous_breaches, breach_change, rate_change_pp, volume_change_pct, current_share, previous_share]
+      properties:
+        dimension: { type: string }
+        key: { type: string }
+        label: { type: string }
+        current_tickets: { type: integer }
+        previous_tickets: { type: integer }
+        current_breaches: { type: integer }
+        previous_breaches: { type: integer }
+        breach_change: { type: integer }
+        rate_change_pp: { type: [number, "null"] }
+        volume_change_pct: { type: [number, "null"] }
+        current_share: { type: [number, "null"] }
+        previous_share: { type: [number, "null"] }
+    Comparison:
+      type: object
+      required: [available, note, previous_period, previous, rate_change_pp, breach_change, volume_change_pct, changes]
+      properties:
+        available: { type: boolean }
+        note: { type: string }
+        previous_period: { $ref: "#/components/schemas/Period" }
+        previous: { $ref: "#/components/schemas/MetricSet" }
+        rate_change_pp: { type: [number, "null"] }
+        breach_change: { type: integer }
+        volume_change_pct: { type: [number, "null"] }
+        changes: { type: array, items: { $ref: "#/components/schemas/Change" } }
+    TargetScenario:
+      type: object
+      required: [target_rate, label, gap_pp, observed_volume, scenario_exposure_inr, potential_difference_inr, caveat]
+      properties:
+        target_rate: { type: number }
+        label: { type: string }
+        gap_pp: { type: [number, "null"] }
+        observed_volume: { type: integer }
+        scenario_exposure_inr: { type: number }
+        potential_difference_inr: { type: number }
+        caveat: { type: string }
+    Dashboard:
+      type: object
+      required: [dataset_version, filters, period, metrics, comparison, weekly, channels, resolving_shifts, arrival_shifts, response_shifts, roster_teams, assigned_teams, agents, crosstab, scenario, caveats, evidence_ids, roster_method]
+      properties:
+        dataset_version: { type: string }
+        filters: { $ref: "#/components/schemas/Filters" }
+        period: { $ref: "#/components/schemas/Period" }
+        metrics: { $ref: "#/components/schemas/MetricSet" }
+        comparison: { $ref: "#/components/schemas/Comparison" }
+        weekly: { type: array, items: { $ref: "#/components/schemas/WeekMetrics" } }
+        channels: { type: array, items: { $ref: "#/components/schemas/BreakdownRow" } }
+        resolving_shifts: { type: array, items: { $ref: "#/components/schemas/BreakdownRow" } }
+        arrival_shifts: { type: array, items: { $ref: "#/components/schemas/BreakdownRow" } }
+        response_shifts: { type: array, items: { $ref: "#/components/schemas/BreakdownRow" } }
+        roster_teams: { type: array, items: { $ref: "#/components/schemas/BreakdownRow" } }
+        assigned_teams: { type: array, items: { $ref: "#/components/schemas/BreakdownRow" } }
+        agents: { type: array, items: { $ref: "#/components/schemas/BreakdownRow" } }
+        crosstab: { type: array, items: { $ref: "#/components/schemas/CrossTabCell" } }
+        scenario: { $ref: "#/components/schemas/TargetScenario" }
+        caveats: { type: array, items: { type: string } }
+        evidence_ids: { type: array, items: { type: string } }
+        roster_method: { type: string }
+    RosterAssignment:
+      type: object
+      required: [agent_id, name, site, team, shift, tier, from_date, to_date]
+      properties:
+        agent_id: { type: string }
+        name: { type: string }
+        site: { type: string }
+        team: { type: string }
+        shift: { type: string }
+        tier: { type: string }
+        from_date: { type: string }
+        to_date: { type: [string, "null"] }
+    Ticket:
+      type: object
+      required: [ticket_id, created_at, created_ist, first_response_at, first_response_ist, resolved_at, status, channel, category, assigned_team, agent_id, agent_name, roster_shift, roster_team, roster_tier, arrival_shift, response_shift, target_minutes, response_minutes, breach_minutes, breached, exposure_inr, source_system, quality_flags]
+      properties:
+        ticket_id: { type: string }
+        created_at: { type: string }
+        created_ist: { type: string }
+        first_response_at: { type: [string, "null"] }
+        first_response_ist: { type: [string, "null"] }
+        resolved_at: { type: [string, "null"] }
+        status: { type: string }
+        channel: { type: string }
+        category: { type: string }
+        assigned_team: { type: string }
+        agent_id: { type: string }
+        agent_name: { type: string }
+        roster_shift: { type: string }
+        roster_team: { type: string }
+        roster_tier: { type: string }
+        arrival_shift: { type: string }
+        response_shift: { type: string }
+        target_minutes: { type: [number, "null"] }
+        response_minutes: { type: [number, "null"] }
+        breach_minutes: { type: [number, "null"] }
+        breached: { type: [boolean, "null"] }
+        exposure_inr: { type: number }
+        source_system: { type: string }
+        quality_flags: { type: array, items: { type: string } }
+    TicketPage:
+      type: object
+      required: [items, total, page, page_size, dataset_version]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Ticket" } }
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+        dataset_version: { type: string }
+    SourceRow:
+      type: object
+      description: Original CSV values preserved as strings, including blanks, for audit.
+      required: [row_number, ticket_id, source_system, created_at, first_response_at, resolved_at, status, channel, customer_id, order_id, product_sku, category, priority, assigned_team, agent_id, transfers, csat_score, refund_amount_inr, refund_reason_code, replacement_issued, customer_message, agent_notes]
+      properties:
+        row_number: { type: integer }
+        ticket_id: { type: string }
+        source_system: { type: string }
+        created_at: { type: string }
+        first_response_at: { type: string }
+        resolved_at: { type: string }
+        status: { type: string }
+        channel: { type: string }
+        customer_id: { type: string }
+        order_id: { type: string }
+        product_sku: { type: string }
+        category: { type: string }
+        priority: { type: string }
+        assigned_team: { type: string }
+        agent_id: { type: string }
+        transfers: { type: string }
+        csat_score: { type: string }
+        refund_amount_inr: { type: string }
+        refund_reason_code: { type: string }
+        replacement_issued: { type: string }
+        customer_message: { type: string }
+        agent_notes: { type: string }
+    OrderContext:
+      type: object
+      required: [order_id, customer_id, sku, order_date, sales_channel, qty, order_value_inr, lot_code]
+      properties:
+        order_id: { type: string }
+        customer_id: { type: string }
+        sku: { type: string }
+        order_date: { type: string }
+        sales_channel: { type: string }
+        qty: { type: integer }
+        order_value_inr: { type: number }
+        lot_code: { type: string }
+    ProductContext:
+      type: object
+      required: [sku, product_name, family, unit_cost_inr, retail_price_inr, warranty_months]
+      properties:
+        sku: { type: string }
+        product_name: { type: string }
+        family: { type: string }
+        unit_cost_inr: { type: number }
+        retail_price_inr: { type: number }
+        warranty_months: { type: integer }
+    TicketDetail:
+      type: object
+      required: [ticket, customer_message, agent_notes, customer_id, order_id, product_sku, csat_score, refund_amount_raw, refund_reason_code, replacement_issued, roster_assignments, sources, calculation, caveats, classifications]
+      properties:
+        ticket: { $ref: "#/components/schemas/Ticket" }
+        customer_message: { type: string }
+        agent_notes: { type: string }
+        customer_id: { type: string }
+        order_id: { type: [string, "null"] }
+        product_sku: { type: string }
+        csat_score: { type: [integer, "null"] }
+        refund_amount_raw: { type: [string, "null"] }
+        refund_reason_code: { type: [string, "null"] }
+        replacement_issued: { type: boolean }
+        order: { $ref: "#/components/schemas/OrderContext" }
+        product: { $ref: "#/components/schemas/ProductContext" }
+        roster_assignments: { type: array, items: { $ref: "#/components/schemas/RosterAssignment" } }
+        sources: { type: array, items: { $ref: "#/components/schemas/SourceRow" } }
+        calculation: { type: string }
+        caveats: { type: array, items: { type: string } }
+        classifications: { type: array, items: { $ref: "#/components/schemas/Classification" } }
+    DuplicateGroup:
+      type: object
+      required: [group_id, ticket_id, source_systems, canonical_row_number, quarantined, differing_fields, reason, rows]
+      properties:
+        group_id: { type: string }
+        ticket_id: { type: string }
+        source_systems: { type: array, items: { type: string } }
+        canonical_row_number: { type: [integer, "null"] }
+        quarantined: { type: boolean }
+        differing_fields: { type: array, items: { type: string } }
+        reason: { type: string }
+        rows: { type: array, items: { $ref: "#/components/schemas/SourceRow" } }
+    DuplicatePage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/DuplicateGroup" } }
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+    ValidationCheck:
+      type: object
+      required: [key, label, status, count, explanation, ticket_ids]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        status: { type: string, enum: [PASS, WARN, FAIL] }
+        count: { type: integer }
+        explanation: { type: string }
+        ticket_ids: { type: array, items: { type: string } }
+    Reconciliation:
+      type: object
+      required: [raw_rows, duplicate_copies, quarantined_rows, canonical_tickets, selected_tickets, evaluated, breaches, non_breaches, unknown, mapped, unmapped, multiple_roster_matches, channels_total, shifts_total, agents_total, exposure_inr, expected_exposure_inr, passes]
+      properties:
+        raw_rows: { type: integer }
+        duplicate_copies: { type: integer }
+        quarantined_rows: { type: integer }
+        canonical_tickets: { type: integer }
+        selected_tickets: { type: integer }
+        evaluated: { type: integer }
+        breaches: { type: integer }
+        non_breaches: { type: integer }
+        unknown: { type: integer }
+        mapped: { type: integer }
+        unmapped: { type: integer }
+        multiple_roster_matches: { type: integer }
+        channels_total: { type: integer }
+        shifts_total: { type: integer }
+        agents_total: { type: integer }
+        exposure_inr: { type: number }
+        expected_exposure_inr: { type: number }
+        passes: { type: boolean }
+    ValidationReport:
+      type: object
+      required: [status, status_definition, dataset_version, filters, reconciliation, checks, methodology, source_files, ai_evaluation_status]
+      properties:
+        status: { type: string, enum: [PASS, WARN, FAIL] }
+        status_definition: { type: string }
+        dataset_version: { type: string }
+        filters: { $ref: "#/components/schemas/Filters" }
+        reconciliation: { $ref: "#/components/schemas/Reconciliation" }
+        checks: { type: array, items: { $ref: "#/components/schemas/ValidationCheck" } }
+        methodology: { type: array, items: { type: string } }
+        source_files: { type: array, items: { $ref: "#/components/schemas/SourceFile" } }
+        ai_evaluation_status: { type: string }
+    AnalysisInput:
+      type: object
+      required: [filters]
+      properties:
+        filters: { $ref: "#/components/schemas/Filters" }
+        regenerate: { type: boolean, default: false }
+    ClassificationInput:
+      type: object
+      required: [filters]
+      properties:
+        filters: { $ref: "#/components/schemas/Filters" }
+        ticket_ids: { type: array, maxItems: 20, items: { type: string } }
+        sample_size: { type: integer, minimum: 1, maximum: 20, default: 12 }
+        regenerate: { type: boolean, default: false }
+    Evidence:
+      type: object
+      required: [ticket_id, excerpt, field]
+      properties:
+        ticket_id: { type: string }
+        excerpt: { type: string }
+        field: { type: string, enum: [customer_message, agent_notes] }
+    AiProvenance:
+      type: object
+      required: [dataset_version, model, prompt_version, taxonomy_version, generated_at, cached, token_usage, cost_note]
+      properties:
+        dataset_version: { type: string }
+        model: { type: string }
+        prompt_version: { type: string }
+        taxonomy_version: { type: string }
+        generated_at: { type: string }
+        cached: { type: boolean }
+        token_usage: { type: [integer, "null"] }
+        cost_note: { type: string }
+    Insight:
+      type: object
+      required: [id, observation, evidence_summary, hypothesis, confidence, limitation, investigation, evidence]
+      properties:
+        id: { type: string }
+        observation: { type: string }
+        evidence_summary: { type: string }
+        hypothesis: { type: string }
+        confidence: { type: string, enum: [low, medium, high] }
+        limitation: { type: string }
+        investigation: { type: string }
+        evidence: { type: array, items: { $ref: "#/components/schemas/Evidence" } }
+    InsightsResult:
+      type: object
+      required: [status, message, insights, classifications, evaluation_status, filters]
+      properties:
+        status: { type: string, enum: [ready, not_generated, unavailable, error] }
+        message: { type: string }
+        insights: { type: array, items: { $ref: "#/components/schemas/Insight" } }
+        classifications: { type: array, items: { $ref: "#/components/schemas/Classification" } }
+        provenance: { $ref: "#/components/schemas/AiProvenance" }
+        evaluation_status: { type: string }
+        filters: { $ref: "#/components/schemas/Filters" }
+    Classification:
+      type: object
+      required: [id, ticket_id, category, source_category, rationale, confidence, evidence, taxonomy_version, review_status]
+      properties:
+        id: { type: string }
+        ticket_id: { type: string }
+        category: { type: string }
+        source_category: { type: string }
+        rationale: { type: string }
+        confidence: { type: string, enum: [low, medium, high] }
+        evidence: { type: array, items: { $ref: "#/components/schemas/Evidence" } }
+        taxonomy_version: { type: string }
+        review_status: { type: string, enum: [unreviewed, correct, incorrect, uncertain] }
+    TaxonomyCategory:
+      type: object
+      required: [name, definition]
+      properties:
+        name: { type: string }
+        definition: { type: string }
+    ClassificationResult:
+      type: object
+      required: [status, message, classifications, taxonomy, evaluation_status]
+      properties:
+        status: { type: string, enum: [ready, unavailable, error] }
+        message: { type: string }
+        classifications: { type: array, items: { $ref: "#/components/schemas/Classification" } }
+        taxonomy: { type: array, items: { $ref: "#/components/schemas/TaxonomyCategory" } }
+        provenance: { $ref: "#/components/schemas/AiProvenance" }
+        evaluation_status: { type: string }
+    EvaluationInput:
+      type: object
+      required: [classification_id, verdict, reviewer]
+      properties:
+        classification_id: { type: string }
+        verdict: { type: string, enum: [correct, incorrect, uncertain] }
+        reviewer: { type: string, minLength: 1, maxLength: 100 }
+        note: { type: string, maxLength: 2000 }
+        unsupported_claim: { type: boolean }
+    ReviewRecord:
+      type: object
+      required: [classification_id, ticket_id, verdict, reviewer, note, reviewed_at]
+      properties:
+        classification_id: { type: string }
+        ticket_id: { type: string }
+        verdict: { type: string, enum: [correct, incorrect, uncertain] }
+        reviewer: { type: string }
+        note: { type: string }
+        reviewed_at: { type: string }
+        unsupported_claim: { type: [boolean, "null"] }
+    EvaluationResult:
+      type: object
+      required: [status, sample_size, correct, incorrect, uncertain, observed_accuracy, unsupported_claim_rate, methodology, reviews]
+      properties:
+        status: { type: string }
+        sample_size: { type: integer }
+        correct: { type: integer }
+        incorrect: { type: integer }
+        uncertain: { type: integer }
+        observed_accuracy: { type: [number, "null"], description: Percent correct / all reviewed including uncertain; null until reviewed }
+        unsupported_claim_rate: { type: [number, "null"] }
+        methodology: { type: string }
+        reviews: { type: array, items: { $ref: "#/components/schemas/ReviewRecord" } }
+    QuestionInput:
+      type: object
+      required: [question, filters]
+      properties:
+        question: { type: string, minLength: 1, maxLength: 2000 }
+        filters: { $ref: "#/components/schemas/Filters" }
+        context_id: { type: string, pattern: "^[a-f0-9]{32}$", description: Opaque previous-answer reference; server validates dataset and exact filters. No client-supplied answer text is trusted. }
+    ToolTrace:
+      type: object
+      required: [tool, description, ticket_ids]
+      properties:
+        tool: { type: string }
+        description: { type: string }
+        ticket_ids: { type: array, items: { type: string } }
+    AnswerResult:
+      type: object
+      required: [status, answer, evidence, tool_calls, limitations, filters]
+      properties:
+        status: { type: string, enum: [ready, unavailable, error, insufficient_evidence] }
+        answer: { type: string }
+        evidence: { type: array, items: { $ref: "#/components/schemas/Evidence" } }
+        tool_calls: { type: array, items: { $ref: "#/components/schemas/ToolTrace" } }
+        limitations: { type: array, items: { type: string } }
+        filters: { $ref: "#/components/schemas/Filters" }
+        provenance: { $ref: "#/components/schemas/AiProvenance" }
+        context_id: { type: string, description: Pass back for a bounded follow-up about this finding; clear when filters change. }
+    BriefInput:
+      type: object
+      required: [filters]
+      properties:
+        filters: { $ref: "#/components/schemas/Filters" }
+        include_ai: { type: boolean, default: false }
+    BriefResult:
+      type: object
+      required: [title, markdown, filename, generated_at, dataset_version, filters, evidence_ids, ai_status]
+      properties:
+        title: { type: string }
+        markdown: { type: string }
+        filename: { type: string }
+        generated_at: { type: string }
+        dataset_version: { type: string }
+        filters: { $ref: "#/components/schemas/Filters" }
+        evidence_ids: { type: array, items: { type: string } }
+        ai_status: { type: string }

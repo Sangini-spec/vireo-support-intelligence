@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Vireo Support Intelligence"
+description = "Evidence-grounded weekly support SLA reporting for Vireo Audio."
+version = "1.0.0"
+id = "artifacts/vireo-intelligence"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18682
+
+[services.development]
+run = "pnpm --filter @workspace/vireo-intelligence run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/vireo-intelligence", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/vireo-intelligence/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18682"
+BASE_PATH = "/"

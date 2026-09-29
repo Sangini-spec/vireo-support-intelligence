@@ -1,0 +1,13 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Vireo Support Intelligence deterministic analytics and FastAPI service"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi==0.115.12",
+    "httpx==0.28.1",
+    "jsonschema==4.23.0",
+    "pandas==2.2.3",
+    "pyyaml==6.0.2",
+    "uvicorn==0.34.2",
+]
